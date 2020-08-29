@@ -1,0 +1,73 @@
+# This is a basic workflow to help you get started with Actions
+
+name: CI
+
+# Controls when the action will run. Triggers the workflow on push or pull request
+# events but only for the master branch
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+env:
+  IMAGE_NAME: webspa
+  TAG: linux-latest
+  CONTEXT_PATH: .
+  DOCKER_FILE_PATH: src/Web/WebSPA/Dockerfile
+  CHART_PATH: deploy/k8s/helm-simple/webspa
+  CLUSTER_NAME: eshop-learn-aks
+  CLUSTER_RESOURCE_GROUP: eshop-learn-rg
+  REGISTRY_LOGIN_SERVER: eshoplearn20200829001414311.azurecr.io
+  IP_ADDRESS: 13.86.195.198
+
+jobs:
+
+  build-and-push-docker-image:
+    runs-on: ubuntu-latest
+    steps:
+
+    - name: Get code from the repo
+      uses: actions/checkout@v1
+      with:
+        ref: develop
+
+    - name: Build and push Docker images
+      uses: docker/build-push-action@v1.1.0
+      with:
+        username: ${{ secrets.REGISTRY_USERNAME }}
+        password:  ${{ secrets.REGISTRY_PASSWORD }}
+        registry: ${{ env.REGISTRY_LOGIN_SERVER }}
+        path:  ${{ env.CONTEXT_PATH }}
+        dockerfile: ${{ format('{0}/{1}', env.CONTEXT_PATH , env.DOCKER_FILE_PATH ) }}
+        repository:  ${{ env.IMAGE_NAME }}
+        tags: ${{ env.TAG }}
+        push: true
+
+  deploy-to-aks:
+    needs: [build-and-push-docker-image]
+    runs-on: ubuntu-latest
+    steps:
+    - name: Azure Kubernetes set context
+      uses: Azure/aks-set-context@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+        resource-group: ${{env.CLUSTER_RESOURCE_GROUP}}
+        cluster-name: ${{env.CLUSTER_NAME}}
+
+    - name: Get code from the repo
+      uses: actions/checkout@v1
+      with:
+        ref: master
+
+    - name: Helm tool installer
+      uses: Azure/setup-helm@v1
+
+    - name: Azure Login
+      uses: Azure/login@v1.1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Deploy
+      run: |
+        helm upgrade --install eshoplearn-webspa --namespace=default --set registry=${{ env.REGISTRY_LOGIN_SERVER }} --set imagePullPolicy=Always --set host=${{env.IP_ADDRESS}} --set protocol=http ${{ format('{0}/{1}', env.CONTEXT_PATH , env.CHART_PATH ) }}
