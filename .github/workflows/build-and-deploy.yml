@@ -30,7 +30,7 @@ jobs:
     - name: Get code from the repo
       uses: actions/checkout@v1
       with:
-        ref: develop
+        ref: master
 
     - name: Build and push Docker images
       uses: docker/build-push-action@v1.1.0
